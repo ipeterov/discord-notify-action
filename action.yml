@@ -1,0 +1,23 @@
+name: Discord Notify
+description: Post and live-update a Discord card with per-job statuses for this workflow run.
+branding:
+  icon: message-circle
+  color: purple
+inputs:
+  webhook:
+    description: Discord webhook URL.
+    required: true
+  jobs:
+    description: |
+      Job ids to watch, in the same form `needs:` accepts.
+      Examples:
+        jobs: linters
+        jobs: [linters, tests, deploy]
+        jobs: |
+          - linters
+          - tests
+          - deploy
+    required: true
+runs:
+  using: node24
+  main: dist/index.js

@@ -1,0 +1,79 @@
+# discord-notify-action
+
+A GitHub Action that posts a live-updating Discord card showing the status of jobs in the current workflow run.
+
+The card is designed to complement GitHub's own `/github` integration commit
+notifications — it deliberately doesn't duplicate the avatar, branch, or commit
+metadata GitHub already provides, and matches the bot username so the two
+messages group together in Discord.
+
+## Usage
+
+Add a job to your workflow that runs in parallel with the others:
+
+```yaml
+jobs:
+  notify-discord:
+    name: Notify Discord
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - uses: ipeterov/discord-notify-action@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          jobs: |
+            - linters
+            - tests
+            - build
+            - deploy
+
+  linters:
+    # ...
+  tests:
+    # ...
+  build:
+    # ...
+  deploy:
+    # ...
+```
+
+The action polls the GitHub Actions API every few seconds and PATCHes a single
+Discord webhook message until every watched job reaches a terminal state.
+
+## Inputs
+
+| Input     | Required | Description |
+|-----------|----------|-------------|
+| `webhook` | yes      | Discord webhook URL. Set this from a secret. |
+| `jobs`    | yes      | Job ids to watch, in the same form `needs:` accepts. Accepts a scalar, a flow list, or a block list. |
+
+The `jobs` input takes any of these:
+
+```yaml
+jobs: linters
+jobs: [linters, tests, deploy]
+jobs: |
+  - linters
+  - tests
+  - deploy
+```
+
+Job ids must match the YAML keys under `jobs:` in your workflow file — the same
+strings you'd use in `needs:`.
+
+## Required permissions
+
+The notify job needs `actions: read` (to poll the run via the API). The default
+`GITHUB_TOKEN` is sufficient.
+
+## Matrix jobs
+
+Matrix jobs and reusable-workflow jobs are collapsed into one row per job id,
+with a `N/M done` summary. The card stays compact regardless of how many
+combinations the matrix expands into.
+
+## License
+
+MIT
