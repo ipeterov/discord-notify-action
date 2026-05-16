@@ -66787,10 +66787,10 @@ exports.isTerminal = isTerminal;
 exports.allRowsTerminal = allRowsTerminal;
 exports.renderEmbed = renderEmbed;
 const STATE_EMOJI = {
-    "queued|": "⏸️",
-    "pending|": "⏸️",
-    "waiting|": "🕓",
-    "in_progress|": "⏳",
+    "queued|": "🅿️",
+    "pending|": "🅿️",
+    "waiting|": "⏳",
+    "in_progress|": "⚙️",
     "completed|success": "✅",
     "completed|failure": "❌",
     "completed|cancelled": "🚫",
@@ -66800,8 +66800,8 @@ const STATE_EMOJI = {
     "completed|neutral": "⚪",
     "completed|stale": "🪦",
 };
-const UNKNOWN_EMOJI = "❔";
-const MISSING_EMOJI = "⏸️";
+const UNKNOWN_EMOJI = "❓";
+const MISSING_EMOJI = "❓";
 const TERMINAL_CONCLUSIONS = new Set([
     "success",
     "failure",

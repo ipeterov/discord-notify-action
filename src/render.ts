@@ -1,10 +1,10 @@
 import type { Job, Run } from "./github.js";
 
 const STATE_EMOJI: Record<string, string> = {
-  "queued|": "⏸️",
-  "pending|": "⏸️",
-  "waiting|": "🕓",
-  "in_progress|": "⏳",
+  "queued|": "🅿️",
+  "pending|": "🅿️",
+  "waiting|": "⏳",
+  "in_progress|": "⚙️",
   "completed|success": "✅",
   "completed|failure": "❌",
   "completed|cancelled": "🚫",
@@ -14,8 +14,8 @@ const STATE_EMOJI: Record<string, string> = {
   "completed|neutral": "⚪",
   "completed|stale": "🪦",
 };
-const UNKNOWN_EMOJI = "❔";
-const MISSING_EMOJI = "⏸️";
+const UNKNOWN_EMOJI = "❓";
+const MISSING_EMOJI = "❓";
 
 const TERMINAL_CONCLUSIONS = new Set([
   "success",
