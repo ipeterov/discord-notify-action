@@ -66524,7 +66524,18 @@ class GitHubClient {
         return jobs;
     }
     async fetchWorkflowFile(repo, path, ref) {
-        const data = await this.get(`/repos/${repo}/contents/${path}?ref=${ref}`);
+        let data;
+        try {
+            data = await this.get(`/repos/${repo}/contents/${path}?ref=${ref}`);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("403")) {
+                throw new Error(`Cannot read ${path}: the job lacks \`contents: read\` permission. ` +
+                    "Add `contents: read` to the notify-discord job's `permissions:` block.");
+            }
+            throw err;
+        }
         if (data.encoding !== "base64") {
             throw new Error(`Unexpected content encoding: ${data.encoding}`);
         }

@@ -85,9 +85,21 @@ export class GitHubClient {
     path: string,
     ref: string,
   ): Promise<string> {
-    const data = await this.get<{ content: string; encoding: string }>(
-      `/repos/${repo}/contents/${path}?ref=${ref}`,
-    );
+    let data: { content: string; encoding: string };
+    try {
+      data = await this.get<{ content: string; encoding: string }>(
+        `/repos/${repo}/contents/${path}?ref=${ref}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("403")) {
+        throw new Error(
+          `Cannot read ${path}: the job lacks \`contents: read\` permission. ` +
+            "Add `contents: read` to the notify-discord job's `permissions:` block.",
+        );
+      }
+      throw err;
+    }
     if (data.encoding !== "base64") {
       throw new Error(`Unexpected content encoding: ${data.encoding}`);
     }

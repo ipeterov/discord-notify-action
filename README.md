@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+      contents: read
     steps:
       - uses: ipeterov/discord-notify-action@v1
         with:
@@ -65,8 +66,13 @@ strings you'd use in `needs:`.
 
 ## Required permissions
 
-The notify job needs `actions: read` (to poll the run via the API). The default
-`GITHUB_TOKEN` is sufficient.
+The notify job needs:
+
+- `actions: read` — to poll the run and its jobs.
+- `contents: read` — to fetch the workflow file and map your `jobs:` ids
+  to the API's display names.
+
+The default `GITHUB_TOKEN` is sufficient.
 
 ## Matrix jobs
 
