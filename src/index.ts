@@ -18,10 +18,11 @@ async function main(): Promise<void> {
   const webhook = core.getInput("webhook", { required: true });
   const jobsInput = core.getInput("jobs", { required: true });
   const watchedIds = parseJobsInput(jobsInput);
+  const token =
+    core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
 
   const repo = requireEnv("GITHUB_REPOSITORY");
   const runId = requireEnv("GITHUB_RUN_ID");
-  const token = process.env.GITHUB_TOKEN ?? "";
 
   core.setSecret(webhook);
 

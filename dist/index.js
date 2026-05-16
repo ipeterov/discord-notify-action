@@ -66589,9 +66589,9 @@ async function main() {
     const webhook = core.getInput("webhook", { required: true });
     const jobsInput = core.getInput("jobs", { required: true });
     const watchedIds = (0, inputs_js_1.parseJobsInput)(jobsInput);
+    const token = core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
     const repo = requireEnv("GITHUB_REPOSITORY");
     const runId = requireEnv("GITHUB_RUN_ID");
-    const token = process.env.GITHUB_TOKEN ?? "";
     core.setSecret(webhook);
     const gh = new github_js_1.GitHubClient(token);
     const discord = new discord_js_1.DiscordClient(webhook);

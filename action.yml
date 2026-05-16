@@ -18,6 +18,12 @@ inputs:
           - tests
           - deploy
     required: true
+  github-token:
+    description: |
+      GitHub token used to read the workflow run and its jobs. Defaults to the
+      job's `github.token`, which only needs `actions: read` permission.
+    required: false
+    default: ${{ github.token }}
 runs:
   using: node24
   main: dist/index.js
