@@ -66801,7 +66801,10 @@ const STATE_EMOJI = {
     "completed|stale": "🪦",
 };
 const UNKNOWN_EMOJI = "❓";
-const MISSING_EMOJI = "❓";
+// A watched job we don't yet see in the API. Almost always because it has
+// `needs:` on a job that hasn't finished yet, so GitHub hasn't materialized
+// the row. Semantically "waiting".
+const MISSING_EMOJI = "⏳";
 const TERMINAL_CONCLUSIONS = new Set([
     "success",
     "failure",
@@ -66896,7 +66899,7 @@ function renderField(w, runUrl) {
     if (w.rows.length === 0) {
         return {
             name: `${MISSING_EMOJI} ${w.label}`,
-            value: "pending",
+            value: "waiting",
         };
     }
     if (w.rows.length === 1 && !w.multi) {
