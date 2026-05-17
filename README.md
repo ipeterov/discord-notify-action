@@ -74,6 +74,15 @@ The notify job needs:
 
 The default `GITHUB_TOKEN` is sufficient.
 
+## Reruns
+
+The notify job exits non-zero if any watched job ends in `failure` or
+`timed_out`. This makes "Re-run failed jobs" include the notifier alongside
+the jobs you're re-running, so the card keeps updating on the new attempt.
+
+Each attempt posts a new Discord message; from attempt 2 onward the title
+includes `(attempt N)` so the cards are easy to tell apart.
+
 ## Matrix jobs
 
 Matrix jobs and reusable-workflow jobs are collapsed into one row per job id,

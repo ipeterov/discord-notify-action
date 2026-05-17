@@ -79,6 +79,19 @@ export function allRowsTerminal(w: WatchedJob): boolean {
   return w.rows.every(isTerminal);
 }
 
+const FAILURE_CONCLUSIONS = new Set(["failure", "timed_out"]);
+
+export function failedWatched(watched: WatchedJob[]): WatchedJob[] {
+  return watched.filter((w) =>
+    w.rows.some(
+      (r) =>
+        r.status === "completed" &&
+        r.conclusion !== null &&
+        FAILURE_CONCLUSIONS.has(r.conclusion),
+    ),
+  );
+}
+
 function aggregateState(rows: Job[]): {
   status: string | null;
   conclusion: string | null;
@@ -241,7 +254,8 @@ export function renderEmbed(
     run.triggering_actor?.login ??
     null;
 
-  const title = `[${repoShort}:${branch}] CI · run #${run.run_number}`.slice(0, 256);
+  const attemptSuffix = run.run_attempt > 1 ? ` (attempt ${run.run_attempt})` : "";
+  const title = `[${repoShort}:${branch}] CI · run #${run.run_number}${attemptSuffix}`.slice(0, 256);
 
   const earliest = earliestStart(watched.flatMap((w) => w.rows));
   const description =

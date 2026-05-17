@@ -3,6 +3,7 @@ import { Pool } from "undici";
 export interface Run {
   id: number;
   run_number: number;
+  run_attempt: number;
   html_url: string;
   head_branch: string | null;
   head_sha: string;

@@ -6,7 +6,7 @@ import { GitHubClient } from "./github.js";
 import type { Job } from "./github.js";
 import { parseJobsInput } from "./inputs.js";
 import { matchJobs } from "./match.js";
-import { allRowsTerminal, renderEmbed } from "./render.js";
+import { allRowsTerminal, failedWatched, renderEmbed } from "./render.js";
 import type { WatchedJob } from "./render.js";
 import { parseWorkflow } from "./workflow.js";
 import type { JobMeta } from "./workflow.js";
@@ -54,7 +54,10 @@ async function main(): Promise<void> {
     const deadline = Date.now() + MAX_POLL_DURATION_MS;
 
     while (Date.now() < deadline) {
-      if (watched.every(allRowsTerminal)) return;
+      if (watched.every(allRowsTerminal)) {
+        reportWatchedFailures(watched);
+        return;
+      }
       await sleep(POLL_INTERVAL_MS);
       const [nextRun, nextJobs] = await Promise.all([
         gh.fetchRun(repo, runId),
@@ -102,6 +105,13 @@ function warnDynamicNames(ids: string[], meta: Map<string, JobMeta>): void {
       );
     }
   }
+}
+
+function reportWatchedFailures(watched: WatchedJob[]): void {
+  const failed = failedWatched(watched);
+  if (failed.length === 0) return;
+  const ids = failed.map((w) => w.id).join(", ");
+  core.setFailed(`Watched job(s) failed: ${ids}`);
 }
 
 function buildWatched(

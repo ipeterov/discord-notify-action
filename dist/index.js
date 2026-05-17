@@ -66624,8 +66624,10 @@ async function main() {
         let lastPayload = JSON.stringify(embed);
         const deadline = Date.now() + MAX_POLL_DURATION_MS;
         while (Date.now() < deadline) {
-            if (watched.every(render_js_1.allRowsTerminal))
+            if (watched.every(render_js_1.allRowsTerminal)) {
+                reportWatchedFailures(watched);
                 return;
+            }
             await (0, promises_1.setTimeout)(POLL_INTERVAL_MS);
             const [nextRun, nextJobs] = await Promise.all([
                 gh.fetchRun(repo, runId),
@@ -66667,6 +66669,13 @@ function warnDynamicNames(ids, meta) {
                 `Matching will use the static prefix '${m.label}'; verify the card looks right.`);
         }
     }
+}
+function reportWatchedFailures(watched) {
+    const failed = (0, render_js_1.failedWatched)(watched);
+    if (failed.length === 0)
+        return;
+    const ids = failed.map((w) => w.id).join(", ");
+    core.setFailed(`Watched job(s) failed: ${ids}`);
 }
 function buildWatched(ids, meta, jobs) {
     return ids.map((id) => {
@@ -66785,6 +66794,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.pickEmoji = pickEmoji;
 exports.isTerminal = isTerminal;
 exports.allRowsTerminal = allRowsTerminal;
+exports.failedWatched = failedWatched;
 exports.renderEmbed = renderEmbed;
 const STATE_EMOJI = {
     "queued|": "🅿️",
@@ -66836,6 +66846,12 @@ function allRowsTerminal(w) {
     if (w.rows.length === 0)
         return false;
     return w.rows.every(isTerminal);
+}
+const FAILURE_CONCLUSIONS = new Set(["failure", "timed_out"]);
+function failedWatched(watched) {
+    return watched.filter((w) => w.rows.some((r) => r.status === "completed" &&
+        r.conclusion !== null &&
+        FAILURE_CONCLUSIONS.has(r.conclusion)));
 }
 function aggregateState(rows) {
     if (rows.length === 0)
@@ -66992,7 +67008,8 @@ function renderEmbed(watched, run, repo) {
     const author = run.head_commit?.author?.name ??
         run.triggering_actor?.login ??
         null;
-    const title = `[${repoShort}:${branch}] CI · run #${run.run_number}`.slice(0, 256);
+    const attemptSuffix = run.run_attempt > 1 ? ` (attempt ${run.run_attempt})` : "";
+    const title = `[${repoShort}:${branch}] CI · run #${run.run_number}${attemptSuffix}`.slice(0, 256);
     const earliest = earliestStart(watched.flatMap((w) => w.rows));
     const description = earliest !== null ? `started <t:${earliest}:R>` : undefined;
     const footerBits = [sha, author, subject].filter((b) => !!b && b.length > 0);
