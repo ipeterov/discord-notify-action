@@ -35,6 +35,7 @@ const COLOR_RUNNING = 0xc69026;
 const COLOR_SUCCESS = 0x57ab5a;
 const COLOR_FAILURE = 0xe5534b;
 const COLOR_CANCELLED = 0x9198a1;
+const COLOR_ERROR = 0x8957e5;
 
 export interface EmbedField {
   name: string;
@@ -244,6 +245,7 @@ export function renderEmbed(
   watched: WatchedJob[],
   run: Run,
   repo: string,
+  monitoringError?: boolean,
 ): Embed {
   const sha = (run.head_sha ?? "").slice(0, 7);
   const branch = run.head_branch ?? "?";
@@ -268,12 +270,27 @@ export function renderEmbed(
     ? { text: footerBits.join(" · ") }
     : undefined;
 
+  // The monitoring-failure notice gets its own field so Discord renders it as a
+  // separated block instead of crowding the `started …` line in the description.
+  const errorField: EmbedField | null = monitoringError
+    ? {
+        name: "⚠️ Monitoring stopped",
+        value:
+          "The GitHub API kept failing, so this card may be out of date. Check the run directly.",
+      }
+    : null;
+
+  const fields = [
+    ...(errorField ? [errorField] : []),
+    ...watched.map((w) => renderField(w, run.html_url)),
+  ];
+
   return {
     title,
     url: run.html_url,
-    color: overallColor(watched),
+    color: monitoringError ? COLOR_ERROR : overallColor(watched),
     description,
-    fields: watched.map((w) => renderField(w, run.html_url)),
+    fields,
     footer,
   };
 }

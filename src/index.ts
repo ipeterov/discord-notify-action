@@ -51,6 +51,7 @@ async function main(): Promise<void> {
     const messageId = await discord.post(embed);
 
     let lastPayload = JSON.stringify(embed);
+    let lastRun = run;
     const deadline = Date.now() + MAX_POLL_DURATION_MS;
 
     while (Date.now() < deadline) {
@@ -59,10 +60,29 @@ async function main(): Promise<void> {
         return;
       }
       await sleep(POLL_INTERVAL_MS);
-      const [nextRun, nextJobs] = await Promise.all([
-        gh.fetchRun(repo, runId),
-        gh.fetchJobs(repo, runId),
-      ]);
+
+      let nextRun: typeof run;
+      let nextJobs: Job[];
+      try {
+        [nextRun, nextJobs] = await Promise.all([
+          gh.fetchRun(repo, runId),
+          gh.fetchJobs(repo, runId),
+        ]);
+      } catch (err) {
+        // Retries inside GitHubClient are already exhausted. Rather than letting
+        // the card freeze at its last state, mark it as broken and stop.
+        const msg = err instanceof Error ? err.message : String(err);
+        core.error(`Notify Discord: GitHub polling failed: ${msg}`);
+        const errEmbed = renderEmbed(watched, lastRun, repo, true);
+        try {
+          await discord.patch(messageId, errEmbed);
+        } catch {
+          // The Discord patch is best-effort; the job failure below is what matters.
+        }
+        core.setFailed(`Notify Discord: GitHub polling failed: ${msg}`);
+        return;
+      }
+
       const nextWatched = buildWatched(watchedIds, meta, nextJobs);
       const nextEmbed = renderEmbed(nextWatched, nextRun, repo);
       const nextPayload = JSON.stringify(nextEmbed);
@@ -71,6 +91,7 @@ async function main(): Promise<void> {
         lastPayload = nextPayload;
       }
       watched.splice(0, watched.length, ...nextWatched);
+      lastRun = nextRun;
     }
 
     core.setFailed("Notify Discord: poll deadline exceeded");

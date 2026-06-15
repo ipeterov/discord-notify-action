@@ -66477,6 +66477,15 @@ exports.DiscordClient = DiscordClient;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.GitHubClient = void 0;
 const undici_1 = __nccwpck_require__(6752);
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+// Exponential backoff with full jitter: ~1s, 2s, 4s, ... capped at 30s.
+// Spans ~2min total over maxAttempts so a brief API outage doesn't kill a poll.
+function backoffMs(attempt) {
+    const base = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+    return Math.round(base / 2 + Math.random() * (base / 2));
+}
 class GitHubClient {
     pool;
     headers;
@@ -66497,16 +66506,43 @@ class GitHubClient {
         await this.pool.close();
     }
     async get(path) {
-        const res = await this.pool.request({
-            method: "GET",
-            path,
-            headers: this.headers,
-        });
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-            const body = await res.body.text();
-            throw new Error(`GitHub ${path} → ${res.statusCode}: ${body}`);
+        const maxAttempts = 8;
+        let lastErr;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                const res = await this.pool.request({
+                    method: "GET",
+                    path,
+                    headers: this.headers,
+                });
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    const body = await res.body.text();
+                    const err = new Error(`GitHub ${path} → ${res.statusCode}: ${body}`);
+                    // Retry on rate limiting (429) and transient server errors (5xx).
+                    if (res.statusCode === 429 || res.statusCode >= 500) {
+                        lastErr = err;
+                        if (attempt < maxAttempts) {
+                            await sleep(backoffMs(attempt));
+                            continue;
+                        }
+                    }
+                    throw err;
+                }
+                return (await res.body.json());
+            }
+            catch (err) {
+                // Network-level errors (resets, timeouts, DNS) are also transient.
+                if (err instanceof Error && err.message.startsWith("GitHub "))
+                    throw err;
+                lastErr = err;
+                if (attempt < maxAttempts) {
+                    await sleep(backoffMs(attempt));
+                    continue;
+                }
+                throw err;
+            }
         }
-        return (await res.body.json());
+        throw lastErr;
     }
     fetchRun(repo, runId) {
         return this.get(`/repos/${repo}/actions/runs/${runId}`);
@@ -66622,6 +66658,7 @@ async function main() {
         const embed = (0, render_js_1.renderEmbed)(watched, run, repo);
         const messageId = await discord.post(embed);
         let lastPayload = JSON.stringify(embed);
+        let lastRun = run;
         const deadline = Date.now() + MAX_POLL_DURATION_MS;
         while (Date.now() < deadline) {
             if (watched.every(render_js_1.allRowsTerminal)) {
@@ -66629,10 +66666,29 @@ async function main() {
                 return;
             }
             await (0, promises_1.setTimeout)(POLL_INTERVAL_MS);
-            const [nextRun, nextJobs] = await Promise.all([
-                gh.fetchRun(repo, runId),
-                gh.fetchJobs(repo, runId),
-            ]);
+            let nextRun;
+            let nextJobs;
+            try {
+                [nextRun, nextJobs] = await Promise.all([
+                    gh.fetchRun(repo, runId),
+                    gh.fetchJobs(repo, runId),
+                ]);
+            }
+            catch (err) {
+                // Retries inside GitHubClient are already exhausted. Rather than letting
+                // the card freeze at its last state, mark it as broken and stop.
+                const msg = err instanceof Error ? err.message : String(err);
+                core.error(`Notify Discord: GitHub polling failed: ${msg}`);
+                const errEmbed = (0, render_js_1.renderEmbed)(watched, lastRun, repo, true);
+                try {
+                    await discord.patch(messageId, errEmbed);
+                }
+                catch {
+                    // The Discord patch is best-effort; the job failure below is what matters.
+                }
+                core.setFailed(`Notify Discord: GitHub polling failed: ${msg}`);
+                return;
+            }
             const nextWatched = buildWatched(watchedIds, meta, nextJobs);
             const nextEmbed = (0, render_js_1.renderEmbed)(nextWatched, nextRun, repo);
             const nextPayload = JSON.stringify(nextEmbed);
@@ -66641,6 +66697,7 @@ async function main() {
                 lastPayload = nextPayload;
             }
             watched.splice(0, watched.length, ...nextWatched);
+            lastRun = nextRun;
         }
         core.setFailed("Notify Discord: poll deadline exceeded");
     }
@@ -66829,6 +66886,7 @@ const COLOR_RUNNING = 0xc69026;
 const COLOR_SUCCESS = 0x57ab5a;
 const COLOR_FAILURE = 0xe5534b;
 const COLOR_CANCELLED = 0x9198a1;
+const COLOR_ERROR = 0x8957e5;
 function pickEmoji(status, conclusion) {
     if (!status)
         return MISSING_EMOJI;
@@ -67000,7 +67058,7 @@ function overallColor(watched) {
     }
     return COLOR_RUNNING;
 }
-function renderEmbed(watched, run, repo) {
+function renderEmbed(watched, run, repo, monitoringError) {
     const sha = (run.head_sha ?? "").slice(0, 7);
     const branch = run.head_branch ?? "?";
     const repoShort = repo.split("/").pop() ?? repo;
@@ -67016,12 +67074,24 @@ function renderEmbed(watched, run, repo) {
     const footer = footerBits.length > 0
         ? { text: footerBits.join(" · ") }
         : undefined;
+    // The monitoring-failure notice gets its own field so Discord renders it as a
+    // separated block instead of crowding the `started …` line in the description.
+    const errorField = monitoringError
+        ? {
+            name: "⚠️ Monitoring stopped",
+            value: "The GitHub API kept failing, so this card may be out of date. Check the run directly.",
+        }
+        : null;
+    const fields = [
+        ...(errorField ? [errorField] : []),
+        ...watched.map((w) => renderField(w, run.html_url)),
+    ];
     return {
         title,
         url: run.html_url,
-        color: overallColor(watched),
+        color: monitoringError ? COLOR_ERROR : overallColor(watched),
         description,
-        fields: watched.map((w) => renderField(w, run.html_url)),
+        fields,
         footer,
     };
 }
