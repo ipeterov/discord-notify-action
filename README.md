@@ -7,6 +7,8 @@ notifications — it deliberately doesn't duplicate the avatar, branch, or commi
 metadata GitHub already provides, and matches the bot username so the two
 messages group together in Discord.
 
+![Example Discord card showing commit and CI run notifications](example.png)
+
 ## Usage
 
 Add a job to your workflow that runs in parallel with the others:
