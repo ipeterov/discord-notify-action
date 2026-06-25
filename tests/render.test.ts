@@ -144,6 +144,43 @@ describe("renderEmbed (Discord)", () => {
     assert.equal(embed.color, 0xe5534b);
   });
 
+  it("shows the conclusion word for a skipped job, not `done`", () => {
+    const job = fakeJob({
+      conclusion: "skipped",
+      started_at: null,
+      completed_at: null,
+    });
+    const field = onlyField(renderEmbed([watched([job], "Build")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("skipped"), field.value);
+    assert.ok(!field.value.includes("done"), field.value);
+  });
+
+  it("shows the conclusion word alongside the duration for a success", () => {
+    // Decoded for every conclusion, not just the non-success ones.
+    const field = onlyField(renderEmbed([watched([fakeJob()], "Tests")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("success"), field.value);
+    assert.ok(field.value.includes("1m 30s"), field.value);
+  });
+
+  it("decodes a cancelled job's conclusion", () => {
+    const job = fakeJob({ conclusion: "cancelled" });
+    const field = onlyField(renderEmbed([watched([job], "Deploy")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("cancelled"), field.value);
+  });
+
+  it("a fully-done matrix reads `N jobs done`, not `combos`", () => {
+    const rows = [
+      fakeJob({ name: "Tests (a)" }),
+      fakeJob({ name: "Tests (b)" }),
+      fakeJob({ name: "Tests (c)" }),
+    ];
+    const field = onlyField(
+      renderEmbed([watched(rows, "Tests", true)], fakeRun(), "o/r"),
+    );
+    assert.ok(field.value.includes("3 jobs done"), field.value);
+    assert.ok(!field.value.includes("combos"), field.value);
+  });
+
   it("matrix collapse: shows runtime and a per-combo count", () => {
     const rows = [
       fakeJob({ name: "Tests (3.11)" }),

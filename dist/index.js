@@ -66889,6 +66889,29 @@ const STATE_EMOJI = {
     "completed|stale": "🪦",
 };
 const UNKNOWN_EMOJI = "❓";
+// Human-readable status word for a completed job's conclusion. Every conclusion
+// gets a word — we decode the emoji into text for all of them, so a passing job
+// reads `success` just as a skipped one reads `skipped`; the emoji shouldn't be
+// the only thing distinguishing pass from fail. (Previously everything that
+// lacked a duration fell back to `done`, which mislabelled skipped/cancelled.)
+const CONCLUSION_TEXT = {
+    success: "success",
+    failure: "failed",
+    cancelled: "cancelled",
+    skipped: "skipped",
+    timed_out: "timed out",
+    action_required: "action required",
+    neutral: "neutral",
+    stale: "stale",
+};
+// The conclusion word plus the duration when there is one — e.g.
+// `success · 4m 48s`, or just `skipped` for a job with no runtime. Unknown
+// conclusions fall back to the raw value so we never silently swallow a new
+// GitHub state; a null conclusion (shouldn't happen for completed) reads `done`.
+function completedStatus(conclusion, duration) {
+    const word = conclusion === null ? "done" : CONCLUSION_TEXT[conclusion] ?? conclusion;
+    return duration ? `${word} · ${duration}` : word;
+}
 // A watched job we don't yet see in the API. Almost always because it has
 // `needs:` on a job that hasn't finished yet, so GitHub hasn't materialized
 // the row. Semantically "waiting".
@@ -67020,7 +67043,7 @@ function renderField(w, runUrl) {
         summary = `${done}/${total} done`;
     }
     else {
-        summary = `${total} combos`;
+        summary = `${total} jobs done`;
     }
     return {
         name: `${emoji} ${w.label}`,
@@ -67031,8 +67054,7 @@ function rowDetail(job, url) {
     const bits = [];
     if (job.status === "completed") {
         const d = durationBetween(job.started_at, job.completed_at);
-        if (d)
-            bits.push(d);
+        bits.push(completedStatus(job.conclusion, d));
     }
     else if (job.status === "in_progress") {
         bits.push("running");
