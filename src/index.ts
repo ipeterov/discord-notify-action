@@ -18,6 +18,7 @@ async function main(): Promise<void> {
   const jobsInput = core.getInput("jobs", { required: true });
   const watchedIds = parseJobsInput(jobsInput);
   const pollIntervalMs = parsePollInterval(core.getInput("poll_interval"));
+  const buildNumber = core.getInput("build_number").trim() || undefined;
   const token =
     core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
 
@@ -47,7 +48,7 @@ async function main(): Promise<void> {
     warnDynamicNames(watchedIds, meta);
 
     const watched = buildWatched(watchedIds, meta, jobs);
-    const embed = renderEmbed(watched, run, repo);
+    const embed = renderEmbed(watched, run, repo, false, buildNumber);
     const messageId = await discord.post(embed);
 
     let lastPayload = JSON.stringify(embed);
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
         // the card freeze at its last state, mark it as broken and stop.
         const msg = err instanceof Error ? err.message : String(err);
         core.error(`Notify Discord: GitHub polling failed: ${msg}`);
-        const errEmbed = renderEmbed(watched, lastRun, repo, true);
+        const errEmbed = renderEmbed(watched, lastRun, repo, true, buildNumber);
         try {
           await discord.patch(messageId, errEmbed);
         } catch {
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
       }
 
       const nextWatched = buildWatched(watchedIds, meta, nextJobs);
-      const nextEmbed = renderEmbed(nextWatched, nextRun, repo);
+      const nextEmbed = renderEmbed(nextWatched, nextRun, repo, false, buildNumber);
       const nextPayload = JSON.stringify(nextEmbed);
       if (nextPayload !== lastPayload) {
         await discord.patch(messageId, nextEmbed);

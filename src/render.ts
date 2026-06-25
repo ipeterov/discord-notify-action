@@ -246,6 +246,7 @@ export function renderEmbed(
   run: Run,
   repo: string,
   monitoringError?: boolean,
+  buildNumber?: string,
 ): Embed {
   const sha = (run.head_sha ?? "").slice(0, 7);
   const branch = run.head_branch ?? "?";
@@ -257,7 +258,12 @@ export function renderEmbed(
     null;
 
   const attemptSuffix = run.run_attempt > 1 ? ` (attempt ${run.run_attempt})` : "";
-  const title = `[${repoShort}:${branch}] CI · run #${run.run_number}${attemptSuffix}`.slice(0, 256);
+  // A caller-supplied `build_number` overrides GitHub's run number (labelled
+  // `build #` rather than `run #`); otherwise we fall back to the run number.
+  const numberPart = buildNumber
+    ? `build #${buildNumber}`
+    : `run #${run.run_number}`;
+  const title = `[${repoShort}:${branch}] CI · ${numberPart}${attemptSuffix}`.slice(0, 256);
 
   const earliest = earliestStart(watched.flatMap((w) => w.rows));
   const description =

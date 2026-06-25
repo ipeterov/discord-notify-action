@@ -66636,6 +66636,7 @@ async function main() {
     const jobsInput = core.getInput("jobs", { required: true });
     const watchedIds = (0, inputs_js_1.parseJobsInput)(jobsInput);
     const pollIntervalMs = (0, inputs_js_1.parsePollInterval)(core.getInput("poll_interval"));
+    const buildNumber = core.getInput("build_number").trim() || undefined;
     const token = core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
     const repo = requireEnv("GITHUB_REPOSITORY");
     const runId = requireEnv("GITHUB_RUN_ID");
@@ -66655,7 +66656,7 @@ async function main() {
         validateIds(watchedIds, meta);
         warnDynamicNames(watchedIds, meta);
         const watched = buildWatched(watchedIds, meta, jobs);
-        const embed = (0, render_js_1.renderEmbed)(watched, run, repo);
+        const embed = (0, render_js_1.renderEmbed)(watched, run, repo, false, buildNumber);
         const messageId = await discord.post(embed);
         let lastPayload = JSON.stringify(embed);
         let lastRun = run;
@@ -66679,7 +66680,7 @@ async function main() {
                 // the card freeze at its last state, mark it as broken and stop.
                 const msg = err instanceof Error ? err.message : String(err);
                 core.error(`Notify Discord: GitHub polling failed: ${msg}`);
-                const errEmbed = (0, render_js_1.renderEmbed)(watched, lastRun, repo, true);
+                const errEmbed = (0, render_js_1.renderEmbed)(watched, lastRun, repo, true, buildNumber);
                 try {
                     await discord.patch(messageId, errEmbed);
                 }
@@ -66690,7 +66691,7 @@ async function main() {
                 return;
             }
             const nextWatched = buildWatched(watchedIds, meta, nextJobs);
-            const nextEmbed = (0, render_js_1.renderEmbed)(nextWatched, nextRun, repo);
+            const nextEmbed = (0, render_js_1.renderEmbed)(nextWatched, nextRun, repo, false, buildNumber);
             const nextPayload = JSON.stringify(nextEmbed);
             if (nextPayload !== lastPayload) {
                 await discord.patch(messageId, nextEmbed);
@@ -67078,7 +67079,7 @@ function overallColor(watched) {
     }
     return COLOR_RUNNING;
 }
-function renderEmbed(watched, run, repo, monitoringError) {
+function renderEmbed(watched, run, repo, monitoringError, buildNumber) {
     const sha = (run.head_sha ?? "").slice(0, 7);
     const branch = run.head_branch ?? "?";
     const repoShort = repo.split("/").pop() ?? repo;
@@ -67087,7 +67088,12 @@ function renderEmbed(watched, run, repo, monitoringError) {
         run.triggering_actor?.login ??
         null;
     const attemptSuffix = run.run_attempt > 1 ? ` (attempt ${run.run_attempt})` : "";
-    const title = `[${repoShort}:${branch}] CI · run #${run.run_number}${attemptSuffix}`.slice(0, 256);
+    // A caller-supplied `build_number` overrides GitHub's run number (labelled
+    // `build #` rather than `run #`); otherwise we fall back to the run number.
+    const numberPart = buildNumber
+        ? `build #${buildNumber}`
+        : `run #${run.run_number}`;
+    const title = `[${repoShort}:${branch}] CI · ${numberPart}${attemptSuffix}`.slice(0, 256);
     const earliest = earliestStart(watched.flatMap((w) => w.rows));
     const description = earliest !== null ? `started <t:${earliest}:R>` : undefined;
     const footerBits = [sha, author, subject].filter((b) => !!b && b.length > 0);
