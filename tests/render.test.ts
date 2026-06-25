@@ -98,7 +98,8 @@ describe("renderEmbed (Discord)", () => {
     assert.ok(field.value.includes("1m 30s"), field.value);
   });
 
-  it("shows `running` for an in-progress job", () => {
+  it("ticks live elapsed time for an in-progress job", () => {
+    // Started 65s ago, not complete → elapsed = now − started, ticking each poll.
     const job = fakeJob({
       status: "in_progress",
       conclusion: null,
@@ -106,7 +107,59 @@ describe("renderEmbed (Discord)", () => {
       completed_at: null,
     });
     const field = onlyField(renderEmbed([watched([job])], fakeRun(), "o/r"));
+    assert.ok(/1m/.test(field.value), field.value); // ~1m elapsed and counting
+  });
+
+  it("falls back to `running` before an in-progress job has a start time", () => {
+    const job = fakeJob({
+      status: "in_progress",
+      conclusion: null,
+      started_at: null,
+      completed_at: null,
+    });
+    const field = onlyField(renderEmbed([watched([job])], fakeRun(), "o/r"));
     assert.ok(field.value.includes("running"), field.value);
+  });
+
+  it("freezes the total runtime in the description once all jobs are done", () => {
+    // single completed job 00:00:00 → 00:01:30 → `ran for 1m 30s`, no ticker.
+    const embed = renderEmbed([watched([fakeJob()])], fakeRun(), "o/r");
+    assert.ok(embed.description?.includes("ran for 1m 30s"), embed.description);
+    assert.ok(!embed.description?.includes("<t:"), embed.description);
+  });
+
+  it("keeps the native started-ago ticker while a job is still running", () => {
+    const job = fakeJob({
+      status: "in_progress",
+      conclusion: null,
+      started_at: "2024-01-01T00:00:00Z",
+      completed_at: null,
+    });
+    const embed = renderEmbed([watched([job])], fakeRun(), "o/r");
+    assert.ok(embed.description?.includes("started <t:"), embed.description);
+    assert.ok(!embed.description?.includes("ran for"), embed.description);
+  });
+
+  it("matrix runtime ticks live while combos are still running", () => {
+    const startedAt = new Date(Date.now() - 65_000).toISOString();
+    const rows = [
+      fakeJob({
+        name: "Tests (a)",
+        started_at: startedAt,
+        completed_at: new Date(Date.now() - 5_000).toISOString(),
+      }),
+      fakeJob({
+        name: "Tests (b)",
+        status: "in_progress",
+        conclusion: null,
+        started_at: startedAt,
+        completed_at: null,
+      }),
+    ];
+    const field = onlyField(
+      renderEmbed([watched(rows, "Tests", true)], fakeRun(), "o/r"),
+    );
+    assert.ok(/1m/.test(field.value), field.value); // earliest start → now
   });
 
   it("links the job to its logs", () => {

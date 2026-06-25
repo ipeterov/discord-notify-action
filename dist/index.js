@@ -66993,6 +66993,17 @@ function durationBetween(startIso, endIso) {
         return null;
     return formatDuration(e - s);
 }
+// Live elapsed time from a start timestamp to now. Returns null if there's no
+// parseable start. Advances each poll, so a running job's timer ticks.
+function elapsedSince(startIso) {
+    const s = unixSeconds(startIso);
+    if (s === null)
+        return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (now < s)
+        return null;
+    return formatDuration(now - s);
+}
 /** Earliest non-null start timestamp across rows, as unix seconds. */
 function earliestStart(rows) {
     let earliest = null;
@@ -67012,6 +67023,31 @@ function latestCompletion(rows) {
             latest = t;
     }
     return latest;
+}
+// Wall-clock runtime across a set of job rows:
+//   start = earliest row start (immune to our own scheduling delay)
+//   end   = latest row completion once every row is terminal (frozen),
+//           otherwise `now` — which advances each poll, so the value ticks live
+//           while rows are still running, then freezes at the final value.
+// Used both for the whole card (the title) and for a single collapsed matrix
+// (so a matrix reads exactly like any other job: ticks, then freezes).
+function rowsRuntime(rows) {
+    const start = earliestStart(rows);
+    if (start === null)
+        return null;
+    const allTerminal = rows.length > 0 && rows.every(isTerminal);
+    const end = allTerminal
+        ? latestCompletion(rows)
+        : Math.floor(Date.now() / 1000);
+    if (end === null || end < start)
+        return null;
+    return formatDuration(end - start);
+}
+// Wall-clock runtime of all *watched* jobs, for the card title. We can't use
+// GitHub's run duration: our notify job is itself part of the run, so the run
+// is never "finished" while we're polling. We measure across watched rows.
+function workflowRuntime(watched) {
+    return rowsRuntime(watched.flatMap((w) => w.rows));
 }
 function renderField(w, runUrl) {
     if (w.rows.length === 0) {
@@ -67057,7 +67093,9 @@ function rowDetail(job, url) {
         bits.push(completedStatus(job.conclusion, d));
     }
     else if (job.status === "in_progress") {
-        bits.push("running");
+        // Live per-job timer: now − started_at, ticking each poll. Falls back to
+        // `running` before a start timestamp exists.
+        bits.push(elapsedSince(job.started_at) ?? "running");
     }
     else {
         bits.push(humanStatus(job.status));
@@ -67067,14 +67105,11 @@ function rowDetail(job, url) {
 }
 function matrixDetail(rows, summary, runUrl) {
     const bits = [summary];
-    const allDone = rows.every((r) => r.status === "completed");
-    if (allDone) {
-        const earliest = earliestStart(rows);
-        const latest = latestCompletion(rows);
-        if (earliest !== null && latest !== null && latest >= earliest) {
-            bits.push(formatDuration(latest - earliest));
-        }
-    }
+    // Ticks live (earliest start → now) while combos run, then freezes at the
+    // earliest-start → latest-finish wall clock once they're all terminal.
+    const runtime = rowsRuntime(rows);
+    if (runtime)
+        bits.push(runtime);
     bits.push(`[logs ↗](${runUrl})`);
     return bits.join("  ·  ");
 }
@@ -67116,8 +67151,19 @@ function renderEmbed(watched, run, repo, monitoringError, buildNumber) {
         ? `build #${buildNumber}`
         : `run #${run.run_number}`;
     const title = `[${repoShort}:${branch}] CI · ${numberPart}${attemptSuffix}`.slice(0, 256);
+    // While anything is still running we lean on Discord's native relative
+    // timestamp (`started <t:…:R>`), which the client ticks on its own. Once every
+    // watched job is terminal we swap in the frozen total wall-clock runtime —
+    // GitHub's run duration is unusable here since our own notify job keeps the
+    // run "in progress" for as long as we poll.
+    const allDone = watched.length > 0 && watched.every((w) => allRowsTerminal(w));
+    const runtime = workflowRuntime(watched);
     const earliest = earliestStart(watched.flatMap((w) => w.rows));
-    const description = earliest !== null ? `started <t:${earliest}:R>` : undefined;
+    const description = allDone && runtime
+        ? `ran for ${runtime}`
+        : earliest !== null
+            ? `started <t:${earliest}:R>`
+            : undefined;
     const footerBits = [sha, author, subject].filter((b) => !!b && b.length > 0);
     const footer = footerBits.length > 0
         ? { text: footerBits.join(" · ") }
