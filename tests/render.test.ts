@@ -291,6 +291,73 @@ describe("renderEmbed (Discord)", () => {
     assert.equal(field.value, "waiting");
   });
 
+  it("surfaces the running step beside an in-progress job", () => {
+    const job = fakeJob({
+      status: "in_progress",
+      conclusion: null,
+      completed_at: null,
+      steps: [
+        { name: "Set up job", status: "completed", conclusion: "success", number: 1 },
+        { name: "Monitor rolling update", status: "in_progress", conclusion: null, number: 2 },
+      ],
+    });
+    const field = onlyField(renderEmbed([watched([job], "Deploy")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("2/2 `Monitor rolling update`"), field.value);
+  });
+
+  it("surfaces the failed step beside a failed job", () => {
+    const job = fakeJob({
+      conclusion: "failure",
+      steps: [
+        { name: "Run npm ci", status: "completed", conclusion: "success", number: 1 },
+        { name: "Run npx playwright test", status: "completed", conclusion: "failure", number: 2 },
+      ],
+    });
+    const field = onlyField(renderEmbed([watched([job], "Tests")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("2/2 `Run npx playwright test`"), field.value);
+  });
+
+  it("counter uses step.number, so teardown gaps stay monotonic", () => {
+    // Real GitHub numbering: work steps 1–7, then teardown jumps to 13–15.
+    const job = fakeJob({
+      status: "in_progress",
+      conclusion: null,
+      completed_at: null,
+      steps: [
+        { name: "Run npm test", status: "completed", conclusion: "success", number: 7 },
+        { name: "Post Run actions/checkout", status: "in_progress", conclusion: null, number: 13 },
+        { name: "Complete job", status: "queued", conclusion: null, number: 15 },
+      ],
+    });
+    const field = onlyField(renderEmbed([watched([job], "Tests")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("13/15 `Post Run actions/checkout`"), field.value);
+  });
+
+  it("omits the counter while only the setup step exists", () => {
+    // Spin-up: a single "Set up job" step. `1/1` would be misleading.
+    const job = fakeJob({
+      status: "in_progress",
+      conclusion: null,
+      completed_at: null,
+      steps: [
+        { name: "Set up job", status: "in_progress", conclusion: null, number: 1 },
+      ],
+    });
+    const field = onlyField(renderEmbed([watched([job], "Tests")], fakeRun(), "o/r"));
+    assert.ok(field.value.includes("`Set up job`"), field.value);
+    assert.ok(!field.value.includes("1/1"), field.value);
+  });
+
+  it("shows no step line for a successful job", () => {
+    const job = fakeJob({
+      steps: [
+        { name: "Run npm test", status: "completed", conclusion: "success", number: 1 },
+      ],
+    });
+    const field = onlyField(renderEmbed([watched([job], "Tests")], fakeRun(), "o/r"));
+    assert.ok(!field.value.includes("Run npm test"), field.value);
+  });
+
   it("shows a monitoring-stopped notice and error color", () => {
     const embed = renderEmbed([watched([fakeJob()])], fakeRun(), "o/r", true);
     assert.equal(embed.color, 0x8957e5);

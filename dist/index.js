@@ -67049,6 +67049,50 @@ function rowsRuntime(rows) {
 function workflowRuntime(watched) {
     return rowsRuntime(watched.flatMap((w) => w.rows));
 }
+// Discord wraps long field text, so unlike Slack we don't need a tight no-wrap
+// budget — just a sane cap so a pathological step name can't dominate the card.
+const STEP_CHAR_BUDGET = 60;
+function truncate(text, max) {
+    return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+// Render a surfaced step as `<counter> \`<name>\``. Backticks in the name are
+// stripped so they can't terminate the code span; the name is truncated to a
+// sane length.
+function stepCell(s) {
+    const name = truncate(s.name, STEP_CHAR_BUDGET).replace(/`/g, "");
+    const mono = `\`${name}\``;
+    return s.counter ? `${s.counter} ${mono}` : mono;
+}
+// The step worth surfacing for a single-row job, with a position counter:
+//   - failed job   → the step that failed (what broke)
+//   - running job  → the step currently executing (what's happening now)
+// Returns null when there's no steps array, no matching step, or the job is in
+// any other state (done/queued — a step line would just be noise there).
+// The counter `x/y` uses GitHub's own `step.number` (x = the surfaced step's
+// number, y = the highest step number on the job). GitHub's auto-injected
+// teardown steps get high numbers, so the counter stays monotonic — a running
+// teardown reads `13/15`, never "past the end".
+//
+// While a job is still spinning up, GitHub reports just one step ("Set up job"),
+// so a `1/1` counter is misleading — it'll jump to `2/37` the moment the rest
+// materialize. Hence the counter is null when there's only one step.
+function currentStep(job) {
+    const steps = job.steps;
+    if (!steps || steps.length === 0)
+        return null;
+    let step;
+    if (job.status === "completed" && job.conclusion === "failure") {
+        step = steps.find((s) => s.conclusion === "failure");
+    }
+    else if (job.status === "in_progress") {
+        step = steps.find((s) => s.status === "in_progress");
+    }
+    if (!step)
+        return null;
+    const total = Math.max(...steps.map((s) => s.number));
+    const counter = total <= 1 ? null : `${step.number}/${total}`;
+    return { counter, name: step.name };
+}
 function renderField(w, runUrl) {
     if (w.rows.length === 0) {
         return {
@@ -67100,6 +67144,11 @@ function rowDetail(job, url) {
     else {
         bits.push(humanStatus(job.status));
     }
+    // For a running or failed job, surface the step in flight / the step that
+    // broke, so the card says *what* is happening, not just that something is.
+    const step = currentStep(job);
+    if (step)
+        bits.push(stepCell(step));
     bits.push(`[logs ↗](${url})`);
     return bits.join("  ·  ");
 }
