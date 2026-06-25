@@ -1,5 +1,27 @@
 import * as yaml from "js-yaml";
 
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
+const MIN_POLL_INTERVAL_MS = 1_000;
+
+// Poll interval in seconds (e.g. `10`). Empty → the 5s default. Must be a
+// finite number ≥ 1s — polling faster than that risks GitHub rate limits and
+// buys little, since job state rarely changes sub-second.
+export function parsePollInterval(raw: string): number {
+  const v = raw.trim();
+  if (v === "") return DEFAULT_POLL_INTERVAL_MS;
+  const seconds = Number(v);
+  if (!Number.isFinite(seconds)) {
+    throw new Error(
+      `Invalid \`poll_interval\`: '${raw}'. Expected a number of seconds.`,
+    );
+  }
+  const ms = Math.round(seconds * 1_000);
+  if (ms < MIN_POLL_INTERVAL_MS) {
+    throw new Error(`\`poll_interval\` must be at least 1 second, got '${raw}'.`);
+  }
+  return ms;
+}
+
 export function parseJobsInput(raw: string): string[] {
   const trimmed = raw.trim();
   if (!trimmed) {

@@ -4,20 +4,20 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { DiscordClient } from "./discord.js";
 import { GitHubClient } from "./github.js";
 import type { Job } from "./github.js";
-import { parseJobsInput } from "./inputs.js";
+import { parseJobsInput, parsePollInterval } from "./inputs.js";
 import { matchJobs } from "./match.js";
 import { allRowsTerminal, failedWatched, renderEmbed } from "./render.js";
 import type { WatchedJob } from "./render.js";
 import { parseWorkflow } from "./workflow.js";
 import type { JobMeta } from "./workflow.js";
 
-const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_DURATION_MS = 6 * 60 * 60 * 1_000;
 
 async function main(): Promise<void> {
   const webhook = core.getInput("webhook", { required: true });
   const jobsInput = core.getInput("jobs", { required: true });
   const watchedIds = parseJobsInput(jobsInput);
+  const pollIntervalMs = parsePollInterval(core.getInput("poll_interval"));
   const token =
     core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
 
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
         reportWatchedFailures(watched);
         return;
       }
-      await sleep(POLL_INTERVAL_MS);
+      await sleep(pollIntervalMs);
 
       let nextRun: typeof run;
       let nextJobs: Job[];

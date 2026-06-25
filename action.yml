@@ -18,6 +18,12 @@ inputs:
           - tests
           - deploy
     required: true
+  poll_interval:
+    description: |
+      How often to poll the GitHub API, in seconds. Defaults to 5. Must be at
+      least 1; polling faster risks rate limits and buys little.
+    required: false
+    default: "5"
   github-token:
     description: |
       GitHub token used to read the workflow run and its jobs. Defaults to the

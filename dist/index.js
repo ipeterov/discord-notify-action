@@ -66630,12 +66630,12 @@ const inputs_js_1 = __nccwpck_require__(8422);
 const match_js_1 = __nccwpck_require__(4954);
 const render_js_1 = __nccwpck_require__(7055);
 const workflow_js_1 = __nccwpck_require__(2986);
-const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_DURATION_MS = 6 * 60 * 60 * 1_000;
 async function main() {
     const webhook = core.getInput("webhook", { required: true });
     const jobsInput = core.getInput("jobs", { required: true });
     const watchedIds = (0, inputs_js_1.parseJobsInput)(jobsInput);
+    const pollIntervalMs = (0, inputs_js_1.parsePollInterval)(core.getInput("poll_interval"));
     const token = core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
     const repo = requireEnv("GITHUB_REPOSITORY");
     const runId = requireEnv("GITHUB_RUN_ID");
@@ -66665,7 +66665,7 @@ async function main() {
                 reportWatchedFailures(watched);
                 return;
             }
-            await (0, promises_1.setTimeout)(POLL_INTERVAL_MS);
+            await (0, promises_1.setTimeout)(pollIntervalMs);
             let nextRun;
             let nextJobs;
             try {
@@ -66787,8 +66787,28 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parsePollInterval = parsePollInterval;
 exports.parseJobsInput = parseJobsInput;
 const yaml = __importStar(__nccwpck_require__(4281));
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
+const MIN_POLL_INTERVAL_MS = 1_000;
+// Poll interval in seconds (e.g. `10`). Empty → the 5s default. Must be a
+// finite number ≥ 1s — polling faster than that risks GitHub rate limits and
+// buys little, since job state rarely changes sub-second.
+function parsePollInterval(raw) {
+    const v = raw.trim();
+    if (v === "")
+        return DEFAULT_POLL_INTERVAL_MS;
+    const seconds = Number(v);
+    if (!Number.isFinite(seconds)) {
+        throw new Error(`Invalid \`poll_interval\`: '${raw}'. Expected a number of seconds.`);
+    }
+    const ms = Math.round(seconds * 1_000);
+    if (ms < MIN_POLL_INTERVAL_MS) {
+        throw new Error(`\`poll_interval\` must be at least 1 second, got '${raw}'.`);
+    }
+    return ms;
+}
 function parseJobsInput(raw) {
     const trimmed = raw.trim();
     if (!trimmed) {
